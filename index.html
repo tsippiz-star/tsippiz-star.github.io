@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>סל משווה – הסל הכי זול בישראל</title>
+<meta name="description" content="משווים סל קניות בין רשתות המזון בישראל ומגלים איפה הכי זול — בהשוואה הוגנת, עם מבצעים ומשלוח.">
+<meta name="theme-color" content="#1F7A5A">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="סל משווה">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+  html,body{margin:0;height:100%;background:#FBFAF6;overflow:hidden;font-family:"Heebo","Rubik","Arial Hebrew",Arial,sans-serif;color:#17231E}
+  #app{position:fixed;inset:0;width:100%;height:100%;border:0;display:block;background:#FBFAF6}
+  /* מסך פתיחה — עד שהאתר נטען (Streamlit לפעמים "מתעורר" כמה שניות) */
+  #splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#FBFAF6;z-index:2;transition:opacity .35s ease}
+  #splash.hide{opacity:0;pointer-events:none}
+  #splash img{width:96px;height:96px;border-radius:24px;box-shadow:0 8px 24px rgba(31,122,90,.18)}
+  #splash h1{font-size:24px;margin:4px 0 0;font-weight:700}
+  #splash p{margin:0;color:#4B5B54;font-size:15px}
+  .bar{width:140px;height:4px;border-radius:99px;background:#E3ECE6;overflow:hidden;margin-top:6px}
+  .bar i{display:block;width:40%;height:100%;border-radius:99px;background:#1F7A5A;animation:slide 1.1s ease-in-out infinite}
+  @keyframes slide{0%{transform:translateX(160%)}100%{transform:translateX(-260%)}}
+  #slow{display:none;font-size:13px;color:#85938C;max-width:260px;text-align:center;line-height:1.5}
+  #offline{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:32px;background:#FBFAF6;z-index:3}
+  #offline img{width:80px;height:80px;border-radius:20px}
+  #offline h2{margin:4px 0 0;font-size:22px}
+  #offline p{margin:0;color:#4B5B54;max-width:300px;line-height:1.6}
+  #offline button{margin-top:8px;font:inherit;font-weight:700;font-size:16px;border:0;border-radius:999px;background:#1F7A5A;color:#fff;padding:12px 26px;min-height:48px}
+</style>
+</head>
+<body>
+<div id="splash">
+  <img src="icon-192.png" alt="">
+  <h1>סל משווה</h1>
+  <p>מחפשים לך את הסל הכי זול…</p>
+  <div class="bar"><i></i></div>
+  <div id="slow">טוען מחירים עדכניים. בפעם הראשונה ביום זה יכול לקחת עד חצי דקה.</div>
+</div>
+
+<div id="offline">
+  <img src="icon-192.png" alt="">
+  <h2>אין כרגע חיבור לאינטרנט</h2>
+  <p>סל משווה צריך אינטרנט כדי לבדוק את המחירים העדכניים. ברגע שהחיבור יחזור — ממשיכים מאיפה שעצרת.</p>
+  <button onclick="location.reload()">לנסות שוב</button>
+</div>
+
+<iframe id="app" title="סל משווה" allow="camera; clipboard-write; web-share" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+
+<script>
+  // ← כתובת האתר ב-Streamlit. אם תשני את הכתובת שם — לעדכן רק כאן.
+  var APP_URL = 'https://sal-mashve.streamlit.app/';
+
+  var frame = document.getElementById('app');
+  var splash = document.getElementById('splash');
+  var q = location.search ? location.search.slice(1) + '&' : '';
+  frame.src = APP_URL + '?' + q + 'embed=true&embed_options=light_theme';
+
+  function done() { splash.classList.add('hide'); setTimeout(function () { splash.remove(); }, 400); }
+  frame.addEventListener('load', function () { setTimeout(done, 2500); });
+  setTimeout(function () { var s = document.getElementById('slow'); if (s) s.style.display = 'block'; }, 6000);
+  setTimeout(done, 45000);
+
+  function net() { document.getElementById('offline').style.display = navigator.onLine ? 'none' : 'flex'; }
+  window.addEventListener('online', function () { location.reload(); });
+  window.addEventListener('offline', net);
+  net();
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+</script>
+</body>
+</html>
