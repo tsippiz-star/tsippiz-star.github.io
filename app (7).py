@@ -351,7 +351,44 @@ def _match_cached(q, _db):
     prod = match_item(q)
     if prod:
         return {"barcode": prod["barcode"], "name": prod["name"], "brand": prod.get("brand", "")}, []
-    return None, find_candidates(q, 4)
+    return None, _relevant_cands(q, find_candidates(q, 12))
+
+
+# ─── הצעות "איזו התכוונת?" — רק כאלה שבאמת קשורות למה שנכתב ───
+_HEB_PREFIX = "הובלמשכ"
+
+
+def _words(s):
+    s = _re.sub(_QUOTES_RE, "", str(s or "").lower())
+    return [w for w in _re.split(r"[\s,./\-()]+", s) if w]
+
+
+def _word_hit(tok, words):
+    """התאמת מילה שלמה (מותר גם עם אות שימוש בהתחלה: ה/ו/ב/ל/מ/ש/כ). 'מוצר' לא תואם 'מוצרלה'."""
+    for w in words:
+        if w == tok or (len(w) > len(tok) and w[0] in _HEB_PREFIX and w[1:] == tok):
+            return True
+    return False
+
+
+def _relevant_cands(q, cands, keep=4):
+    toks = list(dict.fromkeys(t for t in _words(q) if len(t) >= 2))
+    if not toks:
+        return []
+    need = min(len(toks), max(1, -(-len(toks) * 3 // 5)))      # 1→1 · 2→2 · 3→2 · 4→3 · 5→3
+    out, seen = [], set()
+    for c in cands:
+        words = _words(f"{c.get('name', '')} {c.get('brand', '')}")
+        if sum(_word_hit(t, words) for t in toks) < need:
+            continue
+        key = _re.sub(r"\s+", " ", str(c.get("name", "")).strip())
+        if key in seen:                      # אותו מוצר בכמה ברקודים — מציגים פעם אחת
+            continue
+        seen.add(key)
+        out.append(c)
+        if len(out) >= keep:
+            break
+    return out
 
 
 @st.cache_data(show_spinner=False, ttl=3600)
@@ -504,6 +541,13 @@ def cb_pick(uid, cand):
     for it in ss["items"]:
         if it["uid"] == uid:
             it.update(barcode=cand["barcode"], name=cand["name"], status="ok", cands=[], group=None)
+
+
+def cb_keep_free(uid):
+    """'להשאיר כמו שכתבתי' — המוצר נשאר ברשימה (למשל לקניות), בלי מחיר להשוואה."""
+    for it in ss["items"]:
+        if it["uid"] == uid:
+            it.update(barcode=None, name="", status="none", cands=[], group=None)
 
 
 def _group_desc(it):
@@ -1190,7 +1234,7 @@ if tab == TABS[0]:
                             st.button("−", key=f"m_{it['uid']}", on_click=cb_qty, args=(it["uid"], -1))
                         with c4:
                             st.button("✕", key=f"x_{it['uid']}", on_click=cb_remove, args=(it["uid"],), help="הסרה")
-                        if HAS_FACETS:
+                        if HAS_FACETS and (it["status"] != "none" or it.get("group")):
                           with st.container(key=f"grp_{it['uid']}"):
                             if st.button("עריכת הסוגים" if it.get("group") else "כל הסוגים ← מותג, אחוז שומן, גודל",
                                          key=f"g_{it['uid']}", icon=":material/tune:",
@@ -1198,12 +1242,15 @@ if tab == TABS[0]:
                                 group_dialog(it["uid"])
                         if it["status"] == "unclear" and it["cands"] and not it.get("group"):
                             with st.container(key=f"chips_{it['uid']}"):
-                                ccols = st.columns(len(it["cands"]))
+                                ccols = st.columns(len(it["cands"]) + 1)
                                 for j, cd in enumerate(it["cands"]):
                                     with ccols[j]:
                                         _nm = cd["name"] if len(cd["name"]) <= 30 else cd["name"][:29] + "…"
                                         st.button(_nm, key=f"c_{it['uid']}_{j}", on_click=cb_pick, args=(it["uid"], cd),
                                                   help=f"{cd['name']} · {cd.get('brand', '')}")
+                                with ccols[-1]:
+                                    st.button("✎ להשאיר כמו שכתבתי", key=f"keep_{it['uid']}", on_click=cb_keep_free,
+                                              args=(it["uid"],), help="המוצר יישאר ברשימה, בלי מחיר להשוואה")
             else:
                 ui.md('<div class="tiny" style="margin:6px 0 2px;font-weight:600;color:var(--ink-2)">או התחילי מסל מוכן:</div>')
                 with st.container(key="grid2_quick"):
@@ -1472,7 +1519,7 @@ if tab == TABS[0]:
 
             _unid = [x["q"] for x in ss["items"] if not x["barcode"]]
             if _unid:
-                st.caption("לא נכללו בחישוב (לא זוהו): " + " · ".join(_unid))
+                st.caption("לא נכללו בחישוב (אין להם מחיר במאגר): " + " · ".join(_unid))
             ui.md(ui.float_html(cname(best[0]), best[1]))
 
 # ═══════════════════════════════════════════════════════
@@ -1754,9 +1801,9 @@ else:
     ui.md(ui.help_html())
 
 ui.md('<div class="footer">סל משווה · מחירים מקבצי שקיפות המחירים הרשמיים של הרשתות · חינם ובלי הרשמה · בנוי בישראל'
-      '<div class="footer-links"><a href="app/static/privacy.html" target="_blank">מדיניות פרטיות</a>'
-      '<a href="app/static/terms.html" target="_blank">תנאי שימוש</a>'
-      '<a href="app/static/support.html" target="_blank">תמיכה ויצירת קשר</a></div></div>')
+      '<div class="footer-links"><a href="https://tsippiz-star.github.io/privacy.html" target="_blank">מדיניות פרטיות</a>'
+      '<a href="https://tsippiz-star.github.io/terms.html" target="_blank">תנאי שימוש</a>'
+      '<a href="https://tsippiz-star.github.io/support.html" target="_blank">תמיכה ויצירת קשר</a></div></div>')
 
 # טעינה מוקדמת של קטלוג ההשלמה (אחרי שהעמוד כבר הוצג) — כך ההקלדה הראשונה מהירה
 if HAS_SEARCHBOX:
